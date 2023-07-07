@@ -2,6 +2,10 @@ use std::io::{self, BufRead, Write};
 
 use anyhow::Result;
 
+mod error;
+mod scanner;
+mod token;
+
 fn main() {
     let mut args = std::env::args();
 

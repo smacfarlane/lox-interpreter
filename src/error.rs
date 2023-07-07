@@ -1,11 +1,21 @@
-pub struct Error {
-    line: usize,
-    at: string,
-    message: string,
+use thiserror::Error;
+
+#[derive(Debug, PartialEq)]
+pub struct ErrorLoc {
+    pub line: usize,
+    pub at: usize,
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{}] Error{}: {}", self.line, self.at, self.message)
+#[derive(Error, Debug, PartialEq)]
+pub enum ParseError {
+    #[error("unterminated string {0}")]
+    UnterminatedString(ErrorLoc),
+    #[error("unknown token type")]
+    UnknownTokenType,
+}
+
+impl std::fmt::Display for ErrorLoc {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "line: {}@{}", self.line, self.at)
     }
 }
