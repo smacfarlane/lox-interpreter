@@ -21,12 +21,7 @@ impl Token {
 
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "{} {}",
-            self.token_type,
-            self.lexeme.as_ref().unwrap_or(&String::from(""))
-        )
+        write!(f, "{}", self.token_type,)
     }
 }
 
@@ -103,9 +98,9 @@ impl std::fmt::Display for TokenType {
             Self::GreaterEqual => write!(f, ">="),
             Self::Less => write!(f, "<"),
             Self::LessEqual => write!(f, "<="),
-            Self::Identifier(i) => write!(f, "Identifier({})", i),
-            Self::String(s) => write!(f, "String({})", s),
-            Self::Number(n) => write!(f, "Number({})", n),
+            Self::Identifier(i) => write!(f, "{}", i),
+            Self::String(s) => write!(f, "{}", s),
+            Self::Number(n) => write!(f, "{}", n),
             Self::And => write!(f, "and"),
             Self::Class => write!(f, "class"),
             Self::Else => write!(f, "else"),
