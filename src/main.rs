@@ -3,6 +3,8 @@ use std::io::{self, BufRead, Write};
 use anyhow::Result;
 
 mod error;
+mod expr;
+mod parser;
 mod scanner;
 mod token;
 
