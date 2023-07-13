@@ -2,8 +2,10 @@ use std::io::{self, BufRead, Write};
 
 use anyhow::Result;
 
+mod data_types;
 mod error;
 mod expr;
+mod interpreter;
 mod parser;
 mod scanner;
 mod token;
@@ -21,8 +23,18 @@ fn main() {
     };
 }
 
-fn run(_input: &str) -> Result<()> {
-    todo!();
+fn run(input: &str) -> Result<()> {
+    let mut scanner = crate::scanner::Scanner::new(input.to_string());
+    let tokens = dbg!(scanner.scan_tokens())?;
+
+    let mut parser = crate::parser::Parser::new(tokens);
+    let expr = dbg!(parser.parse())?;
+
+    let result = crate::interpreter::interpret(&Box::new(expr))?;
+
+    println!("{}", result);
+
+    Ok(())
 }
 
 fn run_file(_filename: String) -> Result<()> {
@@ -41,7 +53,7 @@ fn repl() -> Result<()> {
         if buf.trim().is_empty() {
             break;
         }
-        let _ = run(&buf);
+        run(&buf)?;
         buf.clear();
     }
     Ok(())

@@ -1,4 +1,5 @@
 use crate::{
+    data_types::Object,
     expr::Expr,
     token::{Token, TokenType},
 };
@@ -6,7 +7,7 @@ use crate::{
 use anyhow::{anyhow, Result};
 
 #[derive(Debug)]
-struct Parser {
+pub(crate) struct Parser {
     tokens: Vec<Token>,
     current: usize,
 }
@@ -115,17 +116,17 @@ impl Parser {
         if let Some(token) = self.peek() {
             self.next();
             let literal = match token.token_type {
-                TokenType::False => Expr::False,
-                TokenType::True => Expr::True,
-                TokenType::Nil => Expr::Nil,
-                TokenType::Number(n) => Expr::Number(n),
-                TokenType::String(s) => Expr::String(s),
+                TokenType::False => Expr::Literal(Object::Boolean(false)),
+                TokenType::True => Expr::Literal(Object::Boolean(true)),
+                TokenType::Nil => Expr::Literal(Object::Nil),
+                TokenType::Number(n) => Expr::Literal(Object::Number(n)),
+                TokenType::String(s) => Expr::Literal(Object::String(s)),
                 TokenType::LeftParen => {
                     let e = self.expression()?;
                     self.consume(
                         TokenType::RightParen,
                         "Expected ')' after expression".to_string(),
-                    );
+                    )?;
                     Expr::Grouping {
                         grouping: Box::new(e),
                     }
@@ -166,15 +167,15 @@ impl Parser {
 
     fn consume(&mut self, t: TokenType, message: String) -> Result<()> {
         let token = self.peek().ok_or(anyhow!(message.clone()))?;
-        match token.token_type {
-            t => {
-                self.next();
-                Ok(())
-            }
-            _ => Err(anyhow!(message)),
+        if token.token_type == t {
+            self.next();
+            Ok(())
+        } else {
+            Err(anyhow!(message))
         }
     }
 
+    #[allow(dead_code)] // TODO: Implemented as part of following the book, not used yet
     fn synchronize(&mut self) -> Result<()> {
         self.next();
 
@@ -205,7 +206,10 @@ impl Parser {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::token::{Token, TokenType};
+    use crate::{
+        data_types::Object,
+        token::{Token, TokenType},
+    };
 
     #[test]
     fn parse() {
@@ -224,11 +228,11 @@ mod test {
         let expected = Expr::Binary {
             left: Box::new(Expr::Unary {
                 operator: Token::new(TokenType::Minus, None, 1),
-                right: Box::new(Expr::Number(123 as f64)),
+                right: Box::new(Expr::Literal(Object::Number(123 as f64))),
             }),
             operator: Token::new(TokenType::Star, None, 1),
             right: Box::new(Expr::Grouping {
-                grouping: Box::new(Expr::Number(45.67)),
+                grouping: Box::new(Expr::Literal(Object::Number(45.67))),
             }),
         };
 

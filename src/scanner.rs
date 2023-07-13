@@ -6,7 +6,7 @@ use crate::token::{Token, TokenType};
 use anyhow::Result;
 
 #[derive(Debug)]
-struct Scanner {
+pub(crate) struct Scanner {
     source: String,
     tokens: Vec<Token>,
     start: usize,
@@ -15,7 +15,7 @@ struct Scanner {
 }
 
 impl Scanner {
-    fn new(source: String) -> Scanner {
+    pub(crate) fn new(source: String) -> Scanner {
         Scanner {
             source,
             tokens: Vec::new(),
@@ -25,7 +25,7 @@ impl Scanner {
         }
     }
 
-    fn scan_tokens(&mut self) -> Result<Vec<Token>> {
+    pub(crate) fn scan_tokens(&mut self) -> Result<Vec<Token>> {
         while self.peek().is_some() {
             self.start = self.current;
             self.scan_token()?;
@@ -123,12 +123,9 @@ impl Scanner {
         }
 
         let _ = self.next(); // Move past the "
-        let value: String = self
-            .source
-            .chars()
-            .skip(self.start)
-            .take(self.current - self.start)
-            .collect();
+        let start = self.start + 1;
+        let end = (self.current - 1) - start;
+        let value: String = self.source.chars().skip(start).take(end).collect();
 
         self.add_token(TokenType::String(value.clone()), Some(value));
         Ok(())
@@ -277,13 +274,16 @@ mod test {
 
     #[test]
     fn test_string() {
+        // TODO: Investigate why I thought this was correct
+        // let input = String::from("\"abc\n123\"");
         let input = String::from("\"abc\n123\"");
+        let expected = String::from("abc\n123");
 
         let mut scanner = Scanner::new(input.clone());
         let _ = scanner.scan_tokens();
 
         assert_eq!(
-            TokenType::String(input),
+            TokenType::String(expected),
             scanner.tokens.first().unwrap().token_type
         )
     }
