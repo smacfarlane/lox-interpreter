@@ -2,9 +2,9 @@ use std::io::{self, BufRead, Write};
 
 use anyhow::Result;
 
+mod ast;
 mod data_types;
 mod error;
-mod expr;
 mod interpreter;
 mod parser;
 mod scanner;

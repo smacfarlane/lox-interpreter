@@ -1,6 +1,6 @@
+use crate::ast::{Expr, Visitor};
 use crate::data_types::Object;
 use crate::error::EvaluationError;
-use crate::expr::{Expr, Visitor};
 use crate::token::{Token, TokenType};
 
 use anyhow::{anyhow, Result};
@@ -74,7 +74,6 @@ where
 #[cfg(test)]
 mod test {
     #[test]
-    #[allow(unused_must_use)]
     fn interpreter() {
         macro_rules! interpret {
             ($input:expr) => {{

@@ -1,6 +1,6 @@
 use crate::{
+    ast::Expr,
     data_types::Object,
-    expr::Expr,
     token::{Token, TokenType},
 };
 
