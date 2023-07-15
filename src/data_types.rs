@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::error::EvaluationError;
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Object {
+pub enum Object {
     Nil,
     Boolean(bool),
     String(String),

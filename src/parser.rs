@@ -1,5 +1,5 @@
 use crate::{
-    ast::Expr,
+    ast::{Expr, Stmt},
     data_types::Object,
     token::{Token, TokenType},
 };
@@ -17,12 +17,109 @@ impl Parser {
         Parser { tokens, current: 0 }
     }
 
-    pub fn parse(&mut self) -> Result<Expr> {
-        self.expression()
+    pub fn parse(&mut self) -> Result<Vec<Stmt>> {
+        let mut statements = Vec::new();
+
+        while self.peek().is_some() {
+            // TODO: Capture the error
+            if let Some(d) = self.declaration()? {
+                statements.push(d);
+            }
+        }
+
+        Ok(statements)
+    }
+
+    fn declaration(&mut self) -> Result<Option<Stmt>> {
+        let token = self.peek().ok_or(anyhow!("expected token"))?;
+
+        let statement = match token.token_type {
+            TokenType::Var => {
+                self.next();
+                self.var_declaration()
+            }
+            _ => self.statement(),
+        };
+
+        let statement = match statement {
+            Ok(statement) => Some(statement),
+            Err(_) => {
+                self.synchronize();
+                None
+            }
+        };
+
+        Ok(statement)
+    }
+
+    fn var_declaration(&mut self) -> Result<Stmt> {
+        let name = {
+            let token = self.peek().ok_or(anyhow!("expected token"))?;
+            match token.token_type {
+                TokenType::Identifier(_) => self.next().ok_or(anyhow!("expected_token")),
+                _ => Err(anyhow!("expected identifier")),
+            }
+        }?;
+
+        let token = self.peek().ok_or(anyhow!("expected token"))?;
+        let initializer = match token.token_type {
+            TokenType::Equal => {
+                self.next();
+                Some(self.expression()?)
+            }
+            _ => None,
+        };
+
+        self.consume(
+            TokenType::Semicolon,
+            "expected ';' after variable initialization".to_string(),
+        )?;
+        Ok(Stmt::Var { name, initializer })
+    }
+
+    fn statement(&mut self) -> Result<Stmt> {
+        let token = self.peek().ok_or(anyhow!("expected token"))?;
+
+        match token.token_type {
+            TokenType::Print => {
+                self.next().ok_or(anyhow!("expected token"))?;
+            }
+            _ => {}
+        }
+
+        let value: Expr = self.expression()?;
+        self.consume(TokenType::Semicolon, "expected ';' after value".to_string())?;
+
+        let stmt = match token.token_type {
+            TokenType::Print => Stmt::Print(Box::new(value)),
+            _ => Stmt::Expression(Box::new(value)),
+        };
+        dbg!(&stmt);
+
+        Ok(stmt)
     }
 
     fn expression(&mut self) -> Result<Expr> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expr> {
+        let mut e = self.equality()?;
+
+        if self.matches_next(vec![TokenType::Equal]) {
+            let equals = self.prev().ok_or(anyhow!("expected previous token"))?;
+            let value = self.assignment()?;
+
+            e = match e {
+                Expr::Variable(v) => Ok(Expr::Assign {
+                    name: v,
+                    value: Box::new(value),
+                }),
+                _ => Err(anyhow!("invalid assigment target")),
+            }?;
+        }
+
+        Ok(e)
     }
 
     fn equality(&mut self) -> Result<Expr> {
@@ -131,7 +228,8 @@ impl Parser {
                         grouping: Box::new(e),
                     }
                 }
-                _ => return Err(anyhow!("dunno")),
+                TokenType::Identifier(_) => Expr::Variable(token),
+                _ => return Err(anyhow!("dunno {}", dbg!(token))),
             };
 
             Ok(literal)
@@ -146,7 +244,12 @@ impl Parser {
     }
 
     fn peek(&self) -> Option<Token> {
-        self.tokens.get(self.current).cloned()
+        match self.tokens.get(self.current) {
+            Some(t) if t.token_type == TokenType::Eof => None,
+            Some(t) => Some(t.clone()),
+            None => None,
+        }
+        // self.tokens.get(self.current).cloned()
     }
 
     fn prev(&self) -> Option<Token> {
@@ -220,12 +323,13 @@ mod test {
             Token::new(TokenType::LeftParen, None, 1),
             Token::new(TokenType::Number(45.67), None, 1),
             Token::new(TokenType::RightParen, None, 1),
+            Token::new(TokenType::Semicolon, None, 1),
         ];
 
         let mut parser = Parser::new(tokens);
         let expr = parser.parse();
 
-        let expected = Expr::Binary {
+        let expected = Stmt::Expression(Box::new(Expr::Binary {
             left: Box::new(Expr::Unary {
                 operator: Token::new(TokenType::Minus, None, 1),
                 right: Box::new(Expr::Literal(Object::Number(123 as f64))),
@@ -234,22 +338,10 @@ mod test {
             right: Box::new(Expr::Grouping {
                 grouping: Box::new(Expr::Literal(Object::Number(45.67))),
             }),
-        };
-
-        // let expr = Expr::Binary {
-        //     left: Box::new(Expr::Unary {
-        //         operator: Token::new(TokenType::Minus, None, 1),
-        //         right: Box::new(Expr::Number(123 as f64)),
-        //     }),
-        //     operator: Token::new(TokenType::Star, None, 1),
-        //     right: Box::new(Expr::Grouping {
-        //         grouping: Box::new(Expr::Number(45.67)),
-        //     }),
-        // };
+        }));
 
         // let expected = "(* (- 123) (group 45.67))";
 
-        assert!(expr.is_ok());
-        assert_eq!(expected, expr.unwrap());
+        assert_eq!(expected, *expr.unwrap().first().unwrap());
     }
 }

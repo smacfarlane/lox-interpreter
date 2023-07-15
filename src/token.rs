@@ -3,9 +3,9 @@ use std::str::FromStr;
 use crate::error::ParseError;
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Token {
-    pub(crate) token_type: TokenType,
-    lexeme: Option<String>,
+pub struct Token {
+    pub token_type: TokenType,
+    pub lexeme: Option<String>,
     line: usize,
 }
 
@@ -26,7 +26,7 @@ impl std::fmt::Display for Token {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum TokenType {
+pub enum TokenType {
     // Single-character tokens
     LeftParen,
     RightParen,

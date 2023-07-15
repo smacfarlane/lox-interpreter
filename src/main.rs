@@ -1,9 +1,12 @@
 use std::io::{self, BufRead, Write};
 
+use crate::interpreter::Interpreter;
+
 use anyhow::Result;
 
 mod ast;
 mod data_types;
+mod environment;
 mod error;
 mod interpreter;
 mod parser;
@@ -23,16 +26,14 @@ fn main() {
     };
 }
 
-fn run(input: &str) -> Result<()> {
+fn run(interpreter: &mut Interpreter, input: &str) -> Result<()> {
     let mut scanner = crate::scanner::Scanner::new(input.to_string());
-    let tokens = dbg!(scanner.scan_tokens())?;
+    let tokens = scanner.scan_tokens()?;
 
     let mut parser = crate::parser::Parser::new(tokens);
-    let expr = dbg!(parser.parse())?;
+    let statements = parser.parse()?;
 
-    let result = crate::interpreter::interpret(&Box::new(expr))?;
-
-    println!("{}", result);
+    interpreter.interpret(statements)?;
 
     Ok(())
 }
@@ -42,6 +43,7 @@ fn run_file(_filename: String) -> Result<()> {
 }
 
 fn repl() -> Result<()> {
+    let mut interpreter = Interpreter::new();
     loop {
         print!("> ");
         std::io::stdout().flush().expect("unable to flush stdout");
@@ -53,7 +55,10 @@ fn repl() -> Result<()> {
         if buf.trim().is_empty() {
             break;
         }
-        run(&buf)?;
+        match run(&mut interpreter, &buf) {
+            Ok(_) => {}
+            Err(e) => println!("{}", e),
+        }
         buf.clear();
     }
     Ok(())

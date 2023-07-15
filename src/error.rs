@@ -27,6 +27,14 @@ pub enum EvaluationError {
     StringConcatination,
 }
 
+#[derive(Error, Debug, PartialEq)]
+pub enum RuntimeError {
+    #[error("undefined variable: '{0}'")]
+    UndefinedVariable(String),
+    #[error("unexpected token: '{0}'")]
+    UnexpectedToken(crate::token::Token),
+}
+
 impl std::fmt::Display for ErrorLoc {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "line: {}@{}", self.line, self.at)
