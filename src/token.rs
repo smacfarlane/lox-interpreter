@@ -2,6 +2,8 @@ use std::str::FromStr;
 
 use crate::error::ParseError;
 
+use strum_macros::EnumDiscriminants;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
     pub token_type: TokenType,
@@ -25,7 +27,7 @@ impl std::fmt::Display for Token {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, EnumDiscriminants)]
 pub enum TokenType {
     // Single-character tokens
     LeftParen,

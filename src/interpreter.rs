@@ -19,14 +19,38 @@ impl Interpreter {
     }
     pub fn interpret(&mut self, statements: Vec<Stmt>) -> Result<()> {
         for statement in statements {
-            statement.accept(self)?;
+            execute(self, &statement)?;
         }
 
         Ok(())
     }
+
+    fn execute_block(&mut self, statements: &Vec<Box<Stmt>>, e: Environment) -> Result<()> {
+        let previous = self.environment.clone();
+        let mut had_error = Ok(());
+
+        // dbg!("Start Block");
+        // dbg!(&statements);
+        self.environment = e.clone();
+        for statement in statements {
+            // dbg!(&statement);
+            if let Err(e) = execute(self, &*statement) {
+                had_error = Err(e);
+                break;
+            }
+        }
+        // dbg!("End block");
+
+        self.environment = previous;
+        had_error
+    }
 }
 
 impl StatementVisitor for &mut Interpreter {
+    fn visit_block(&mut self, stmts: &Vec<Box<Stmt>>) -> Result<()> {
+        (**self).visit_block(stmts)
+    }
+
     fn visit_print(&mut self, expr: &Expr) -> Result<()> {
         (**self).visit_print(expr)
     }
@@ -40,6 +64,10 @@ impl StatementVisitor for &mut Interpreter {
 }
 
 impl StatementVisitor for Interpreter {
+    fn visit_block(&mut self, stmts: &Vec<Box<Stmt>>) -> Result<()> {
+        self.execute_block(stmts, Environment::enclose(&self.environment))
+    }
+
     fn visit_print(&mut self, expr: &Expr) -> Result<()> {
         let value = evaluate(self, expr)?;
 
@@ -60,11 +88,25 @@ impl StatementVisitor for Interpreter {
             .lexeme
             .clone()
             .ok_or(RuntimeError::UnexpectedToken(name.clone()))?;
-        dbg!(&name);
-        dbg!(self.environment.define(name, value));
+        self.environment.define(name, value);
 
         Ok(())
     }
+    // fn visit_assignment(&mut self, expr: &Expr) -> Result<()> {
+    //     let value = evaluate(self, expr)?;
+    //     match expr {
+    //         Expr::Assign { name, value } => {
+    //             let name = name
+    //                 .lexeme
+    //                 .clone()
+    //                 .ok_or(RuntimeError::UnexpectedToken(name.clone()))?;
+    //             self.environment.assign(name, value);
+    //         }
+    //         _ => unreachable!(),
+    //     }
+
+    //     Ok(value)
+    // }
 }
 
 impl ExpressionVisitor<Object> for Interpreter {
@@ -74,8 +116,7 @@ impl ExpressionVisitor<Object> for Interpreter {
             .lexeme
             .clone()
             .ok_or(RuntimeError::UnexpectedToken(name.clone()))?;
-
-        self.environment.assign(name, value.clone());
+        self.environment.assign(name, value.clone())?;
 
         Ok(value)
     }
@@ -125,7 +166,9 @@ impl ExpressionVisitor<Object> for Interpreter {
         Ok(literal.clone())
     }
     fn visit_variable(&mut self, token: &Token) -> Result<Object> {
-        self.environment.get(token)
+        dbg!(token);
+        dbg!(&self.environment);
+        dbg!(self.environment.get(token))
     }
 }
 
@@ -133,7 +176,17 @@ fn evaluate<V, T>(visitor: &mut V, expression: &Expr) -> Result<T>
 where
     V: ExpressionVisitor<T>,
 {
+    // dbg!(expression);
     expression.accept(visitor)
+}
+
+// fn execute
+fn execute<V>(visitor: &mut V, statement: &Stmt) -> Result<()>
+where
+    V: StatementVisitor,
+{
+    dbg!(statement);
+    statement.accept(visitor)
 }
 
 #[cfg(test)]

@@ -12,6 +12,7 @@ pub trait ExpressionVisitor<T> {
 }
 
 pub trait StatementVisitor {
+    fn visit_block(&mut self, s: &Vec<Box<Stmt>>) -> Result<()>;
     fn visit_print(&mut self, e: &Expr) -> Result<()>;
     fn visit_expression(&mut self, e: &Expr) -> Result<()>;
     fn visit_variable(&mut self, n: &Token, i: Option<&Expr>) -> Result<()>;
@@ -41,6 +42,7 @@ pub enum Expr {
 
 #[derive(Debug, PartialEq)]
 pub enum Stmt {
+    Block(Vec<Box<Stmt>>),
     Expression(Box<Expr>),
     Print(Box<Expr>),
     Var {
@@ -55,7 +57,8 @@ impl Stmt {
         V: StatementVisitor,
     {
         match self {
-            Self::Print(expr) => visitor.visit_print(expr), // TODO: This should be a Stmt::Print
+            Self::Block(stmts) => visitor.visit_block(stmts),
+            Self::Print(expr) => visitor.visit_print(expr), // TODO: This should be a Stmt::Print (why?)
             Self::Expression(expr) => visitor.visit_expression(expr),
             Self::Var {
                 name: name,

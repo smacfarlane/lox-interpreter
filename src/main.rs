@@ -31,7 +31,7 @@ fn run(interpreter: &mut Interpreter, input: &str) -> Result<()> {
     let tokens = scanner.scan_tokens()?;
 
     let mut parser = crate::parser::Parser::new(tokens);
-    let statements = parser.parse()?;
+    let statements = dbg!(parser.parse()?);
 
     interpreter.interpret(statements)?;
 

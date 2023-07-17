@@ -1,3 +1,4 @@
+use crate::token::TokenType;
 use thiserror::Error;
 
 #[derive(Debug, PartialEq)]
@@ -8,6 +9,8 @@ pub struct ErrorLoc {
 
 #[derive(Error, Debug, PartialEq)]
 pub enum ParseError {
+    #[error("expected token {0}")]
+    ExpectedToken(TokenType),
     #[error("unterminated string {0}")]
     UnterminatedString(ErrorLoc),
     #[error("unknown token type")]

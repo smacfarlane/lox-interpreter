@@ -1,7 +1,8 @@
 use crate::{
     ast::{Expr, Stmt},
     data_types::Object,
-    token::{Token, TokenType},
+    error::ParseError,
+    token::{Token, TokenType, TokenTypeDiscriminants},
 };
 
 use anyhow::{anyhow, Result};
@@ -70,33 +71,63 @@ impl Parser {
             _ => None,
         };
 
-        self.consume(
-            TokenType::Semicolon,
-            "expected ';' after variable initialization".to_string(),
-        )?;
+        self.next_if(|t| t == TokenTypeDiscriminants::Semicolon)
+            .ok_or(ParseError::ExpectedToken(TokenType::Semicolon))?;
         Ok(Stmt::Var { name, initializer })
     }
 
     fn statement(&mut self) -> Result<Stmt> {
         let token = self.peek().ok_or(anyhow!("expected token"))?;
 
-        match token.token_type {
-            TokenType::Print => {
-                self.next().ok_or(anyhow!("expected token"))?;
-            }
-            _ => {}
-        }
-
-        let value: Expr = self.expression()?;
-        self.consume(TokenType::Semicolon, "expected ';' after value".to_string())?;
+        self.next_if(|token| {
+            token == TokenTypeDiscriminants::Print || token == TokenTypeDiscriminants::LeftBrace
+        });
 
         let stmt = match token.token_type {
-            TokenType::Print => Stmt::Print(Box::new(value)),
-            _ => Stmt::Expression(Box::new(value)),
+            TokenType::Print => {
+                let value: Expr = self.expression()?;
+                self.next_if(|t| t == TokenTypeDiscriminants::Semicolon)
+                    .ok_or(ParseError::ExpectedToken(TokenType::Semicolon))?;
+                Stmt::Print(Box::new(value))
+            }
+            TokenType::LeftBrace => Stmt::Block(self.block()?),
+            _ => {
+                let value: Expr = self.expression()?;
+                self.next_if(|t| t == TokenTypeDiscriminants::Semicolon)
+                    .ok_or(ParseError::ExpectedToken(TokenType::Semicolon))?;
+                Stmt::Expression(Box::new(value))
+            }
         };
-        dbg!(&stmt);
 
         Ok(stmt)
+    }
+
+    fn block(&mut self) -> Result<Vec<Box<Stmt>>> {
+        let mut statements = Vec::new();
+
+        loop {
+            let token = self.peek().ok_or(anyhow!("expected token"))?;
+            dbg!(&token);
+            match token.token_type {
+                TokenType::Eof | TokenType::RightBrace => {
+                    break;
+                }
+                _ => {
+                    statements.push(self.declaration()?);
+                }
+            }
+        }
+
+        self.next_if(|t| t == TokenTypeDiscriminants::RightBrace)
+            .ok_or(ParseError::ExpectedToken(TokenType::RightBrace))?;
+
+        let statements = statements
+            .into_iter()
+            .flatten()
+            .map(|s| Box::new(s))
+            .collect();
+
+        Ok(statements)
     }
 
     fn expression(&mut self) -> Result<Expr> {
@@ -106,8 +137,7 @@ impl Parser {
     fn assignment(&mut self) -> Result<Expr> {
         let mut e = self.equality()?;
 
-        if self.matches_next(vec![TokenType::Equal]) {
-            let equals = self.prev().ok_or(anyhow!("expected previous token"))?;
+        if let Some(token) = self.next_if(|t| t == TokenTypeDiscriminants::Equal) {
             let value = self.assignment()?;
 
             e = match e {
@@ -115,9 +145,10 @@ impl Parser {
                     name: v,
                     value: Box::new(value),
                 }),
-                _ => Err(anyhow!("invalid assigment target")),
+                _ => Err(anyhow!("invalid assigment target {}", token)),
             }?;
-        }
+            dbg!(&e);
+        };
 
         Ok(e)
     }
@@ -125,8 +156,9 @@ impl Parser {
     fn equality(&mut self) -> Result<Expr> {
         let mut e = self.comparison()?;
 
-        while self.matches_next(vec![TokenType::BangEqual, TokenType::EqualEqual]) {
-            let operator = self.prev().ok_or(anyhow!("no previous token"))?;
+        while let Some(operator) = self.next_if(|t| {
+            t == TokenTypeDiscriminants::BangEqual || t == TokenTypeDiscriminants::EqualEqual
+        }) {
             let right = self.comparison()?;
             e = Expr::Binary {
                 left: Box::new(e),
@@ -141,13 +173,13 @@ impl Parser {
     fn comparison(&mut self) -> Result<Expr> {
         let mut e = self.term()?;
 
-        while self.matches_next(vec![
-            TokenType::Greater,
-            TokenType::GreaterEqual,
-            TokenType::Less,
-            TokenType::LessEqual,
-        ]) {
-            let operator = self.prev().ok_or(anyhow!("no previous token"))?;
+        while let Some(operator) = self.next_if(|t| match t {
+            TokenTypeDiscriminants::Greater
+            | TokenTypeDiscriminants::GreaterEqual
+            | TokenTypeDiscriminants::Less
+            | TokenTypeDiscriminants::LessEqual => true,
+            _ => false,
+        }) {
             let right = self.term()?;
             e = Expr::Binary {
                 left: Box::new(e),
@@ -162,8 +194,9 @@ impl Parser {
     fn term(&mut self) -> Result<Expr> {
         let mut e = self.factor()?;
 
-        while self.matches_next(vec![TokenType::Minus, TokenType::Plus]) {
-            let operator = self.prev().unwrap();
+        while let Some(operator) = self
+            .next_if(|t| t == TokenTypeDiscriminants::Minus || t == TokenTypeDiscriminants::Plus)
+        {
             let right = self.factor()?;
             e = Expr::Binary {
                 left: Box::new(e),
@@ -177,8 +210,9 @@ impl Parser {
     fn factor(&mut self) -> Result<Expr> {
         let mut e = self.unary()?;
 
-        while self.matches_next(vec![TokenType::Slash, TokenType::Star]) {
-            let operator = self.prev().unwrap();
+        while let Some(operator) = self
+            .next_if(|t| t == TokenTypeDiscriminants::Slash || t == TokenTypeDiscriminants::Star)
+        {
             let right = self.unary()?;
             e = Expr::Binary {
                 left: Box::new(e),
@@ -191,27 +225,22 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expr> {
-        if let Some(token) = self.peek() {
-            match token.token_type {
-                TokenType::Bang | TokenType::Minus => {
-                    self.next();
-                    let operator = token;
-                    let right = self.unary()?;
-                    Ok(Expr::Unary {
-                        operator,
-                        right: Box::new(right),
-                    })
-                }
-                _ => self.primary(),
-            }
+        if let Some(operator) = self
+            .next_if(|t| t == TokenTypeDiscriminants::Bang || t == TokenTypeDiscriminants::Minus)
+        {
+            let right = self.unary()?;
+            Ok(Expr::Unary {
+                operator,
+                right: Box::new(right),
+            })
         } else {
             self.primary()
         }
     }
 
     fn primary(&mut self) -> Result<Expr> {
-        if let Some(token) = self.peek() {
-            self.next();
+        // TODO: Could this be .next()?
+        if let Some(token) = self.next_if(|_| true) {
             let literal = match token.token_type {
                 TokenType::False => Expr::Literal(Object::Boolean(false)),
                 TokenType::True => Expr::Literal(Object::Boolean(true)),
@@ -220,16 +249,14 @@ impl Parser {
                 TokenType::String(s) => Expr::Literal(Object::String(s)),
                 TokenType::LeftParen => {
                     let e = self.expression()?;
-                    self.consume(
-                        TokenType::RightParen,
-                        "Expected ')' after expression".to_string(),
-                    )?;
+                    self.next_if(|t| t == TokenTypeDiscriminants::RightParen)
+                        .ok_or(ParseError::ExpectedToken(TokenType::RightParen))?;
                     Expr::Grouping {
                         grouping: Box::new(e),
                     }
                 }
                 TokenType::Identifier(_) => Expr::Variable(token),
-                _ => return Err(anyhow!("dunno {}", dbg!(token))),
+                _ => return Err(anyhow!("dunno {}", token)),
             };
 
             Ok(literal)
@@ -249,32 +276,20 @@ impl Parser {
             Some(t) => Some(t.clone()),
             None => None,
         }
-        // self.tokens.get(self.current).cloned()
     }
 
     fn prev(&self) -> Option<Token> {
         self.tokens.get(self.current - 1).cloned()
     }
 
-    fn matches_next(&mut self, token_types: Vec<TokenType>) -> bool {
-        for tt in token_types {
-            if let Some(tok) = self.peek() {
-                if tok.token_type == tt {
-                    self.next();
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    fn consume(&mut self, t: TokenType, message: String) -> Result<()> {
-        let token = self.peek().ok_or(anyhow!(message.clone()))?;
-        if token.token_type == t {
-            self.next();
-            Ok(())
+    fn next_if<F>(&mut self, f: F) -> Option<Token>
+    where
+        F: FnOnce(TokenTypeDiscriminants) -> bool,
+    {
+        if self.peek().is_some_and(|token| f(token.token_type.into())) {
+            self.next()
         } else {
-            Err(anyhow!(message))
+            None
         }
     }
 
