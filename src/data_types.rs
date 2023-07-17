@@ -11,6 +11,16 @@ pub enum Object {
     // Object(Box<Object>)
 }
 
+impl Object {
+    pub fn is_truthy(&self) -> bool {
+        match !!&*self {
+            Self::Boolean(true) => true,
+            Self::Boolean(false) => false,
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl std::ops::Add for Object {
     type Output = Result<Object>;
 
@@ -68,13 +78,24 @@ impl std::ops::Neg for Object {
 }
 
 impl std::ops::Not for Object {
-    type Output = Result<Object>;
+    type Output = Object;
 
-    fn not(self) -> Result<Object> {
+    fn not(self) -> Self::Output {
         match self {
-            Self::Boolean(a) => Ok(Self::Boolean(!a)),
-            Self::Nil => Ok(Self::Boolean(false)),
-            _ => Ok(Self::Boolean(true)),
+            Self::Boolean(a) => Self::Output::Boolean(!a),
+            Self::Nil => Self::Output::Boolean(false),
+            _ => Self::Output::Boolean(true),
+        }
+    }
+}
+
+impl std::ops::Not for &Object {
+    type Output = Object;
+    fn not(self) -> Self::Output {
+        match *self {
+            Object::Boolean(a) => Self::Output::Boolean(!a),
+            Object::Nil => Self::Output::Boolean(false),
+            _ => Self::Output::Boolean(true),
         }
     }
 }

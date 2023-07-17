@@ -79,11 +79,37 @@ impl Parser {
     fn statement(&mut self) -> Result<Stmt> {
         let token = self.peek().ok_or(anyhow!("expected token"))?;
 
-        self.next_if(|token| {
-            token == TokenTypeDiscriminants::Print || token == TokenTypeDiscriminants::LeftBrace
+        self.next_if(|token| match token {
+            TokenTypeDiscriminants::Print
+            | TokenTypeDiscriminants::LeftBrace
+            | TokenTypeDiscriminants::If => true,
+            _ => false,
         });
 
         let stmt = match token.token_type {
+            TokenType::If => {
+                self.next_if(|t| t == TokenTypeDiscriminants::LeftParen)
+                    .ok_or(ParseError::ExpectedToken(TokenType::LeftParen))?;
+                let condition = self.expression()?;
+                self.next_if(|t| t == TokenTypeDiscriminants::RightParen)
+                    .ok_or(ParseError::ExpectedToken(TokenType::RightParen))?;
+
+                let then = Box::new(self.statement()?);
+                let els = if self
+                    .next_if(|t| t == TokenTypeDiscriminants::Else)
+                    .is_some()
+                {
+                    Some(Box::new(self.statement()?))
+                } else {
+                    None
+                };
+
+                Stmt::If {
+                    condition,
+                    then,
+                    els,
+                }
+            }
             TokenType::Print => {
                 let value: Expr = self.expression()?;
                 self.next_if(|t| t == TokenTypeDiscriminants::Semicolon)
@@ -107,7 +133,6 @@ impl Parser {
 
         loop {
             let token = self.peek().ok_or(anyhow!("expected token"))?;
-            dbg!(&token);
             match token.token_type {
                 TokenType::Eof | TokenType::RightBrace => {
                     break;
@@ -147,7 +172,6 @@ impl Parser {
                 }),
                 _ => Err(anyhow!("invalid assigment target {}", token)),
             }?;
-            dbg!(&e);
         };
 
         Ok(e)

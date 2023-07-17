@@ -29,17 +29,13 @@ impl Interpreter {
         let previous = self.environment.clone();
         let mut had_error = Ok(());
 
-        // dbg!("Start Block");
-        // dbg!(&statements);
         self.environment = e.clone();
         for statement in statements {
-            // dbg!(&statement);
             if let Err(e) = execute(self, &*statement) {
                 had_error = Err(e);
                 break;
             }
         }
-        // dbg!("End block");
 
         self.environment = previous;
         had_error
@@ -60,6 +56,9 @@ impl StatementVisitor for &mut Interpreter {
     fn visit_variable(&mut self, name: &Token, initializer: Option<&Expr>) -> Result<()> {
         // Disambiguate between StatementVisitor and ExpressionVisitor
         StatementVisitor::visit_variable(*self, name, initializer)
+    }
+    fn visit_if(&mut self, condition: &Expr, then: &Stmt, els: Option<&Stmt>) -> Result<()> {
+        (**self).visit_if(condition, then, els)
     }
 }
 
@@ -92,21 +91,16 @@ impl StatementVisitor for Interpreter {
 
         Ok(())
     }
-    // fn visit_assignment(&mut self, expr: &Expr) -> Result<()> {
-    //     let value = evaluate(self, expr)?;
-    //     match expr {
-    //         Expr::Assign { name, value } => {
-    //             let name = name
-    //                 .lexeme
-    //                 .clone()
-    //                 .ok_or(RuntimeError::UnexpectedToken(name.clone()))?;
-    //             self.environment.assign(name, value);
-    //         }
-    //         _ => unreachable!(),
-    //     }
 
-    //     Ok(value)
-    // }
+    fn visit_if(&mut self, condition: &Expr, then: &Stmt, els: Option<&Stmt>) -> Result<()> {
+        if evaluate(self, condition)?.is_truthy() {
+            execute(self, then)?;
+        } else if let Some(els) = els {
+            execute(self, els)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl ExpressionVisitor<Object> for Interpreter {
@@ -155,7 +149,7 @@ impl ExpressionVisitor<Object> for Interpreter {
 
         match operator.token_type {
             TokenType::Minus => -right,
-            TokenType::Bang => !right,
+            TokenType::Bang => Ok(!right),
             _ => Err(anyhow!("invalid operation")),
         }
     }
@@ -166,9 +160,7 @@ impl ExpressionVisitor<Object> for Interpreter {
         Ok(literal.clone())
     }
     fn visit_variable(&mut self, token: &Token) -> Result<Object> {
-        dbg!(token);
-        dbg!(&self.environment);
-        dbg!(self.environment.get(token))
+        self.environment.get(token)
     }
 }
 
@@ -176,7 +168,6 @@ fn evaluate<V, T>(visitor: &mut V, expression: &Expr) -> Result<T>
 where
     V: ExpressionVisitor<T>,
 {
-    // dbg!(expression);
     expression.accept(visitor)
 }
 
@@ -185,7 +176,6 @@ fn execute<V>(visitor: &mut V, statement: &Stmt) -> Result<()>
 where
     V: StatementVisitor,
 {
-    dbg!(statement);
     statement.accept(visitor)
 }
 
