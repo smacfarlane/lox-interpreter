@@ -6,7 +6,7 @@ use crate::token::{Token, TokenType};
 
 use anyhow::{anyhow, Result};
 
-// #[derive(Clone)]
+#[derive(Debug)]
 pub struct Interpreter {
     environment: Environment,
 }
@@ -25,11 +25,10 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute_block(&mut self, statements: &Vec<Box<Stmt>>, e: Environment) -> Result<()> {
-        let previous = self.environment.clone();
+    fn execute_block(&mut self, statements: &Vec<Box<Stmt>>) -> Result<()> {
+        self.environment.new_scope();
         let mut had_error = Ok(());
 
-        self.environment = e.clone();
         for statement in statements {
             if let Err(e) = execute(self, &*statement) {
                 had_error = Err(e);
@@ -37,7 +36,7 @@ impl Interpreter {
             }
         }
 
-        self.environment = previous;
+        self.environment.end_scope();
         had_error
     }
 }
@@ -60,11 +59,14 @@ impl StatementVisitor for &mut Interpreter {
     fn visit_if(&mut self, condition: &Expr, then: &Stmt, els: Option<&Stmt>) -> Result<()> {
         (**self).visit_if(condition, then, els)
     }
+    fn visit_while(&mut self, condition: &Expr, body: &Stmt) -> Result<()> {
+        (**self).visit_while(condition, body)
+    }
 }
 
 impl StatementVisitor for Interpreter {
     fn visit_block(&mut self, stmts: &Vec<Box<Stmt>>) -> Result<()> {
-        self.execute_block(stmts, Environment::enclose(&self.environment))
+        self.execute_block(stmts)
     }
 
     fn visit_print(&mut self, expr: &Expr) -> Result<()> {
@@ -97,6 +99,13 @@ impl StatementVisitor for Interpreter {
             execute(self, then)?;
         } else if let Some(els) = els {
             execute(self, els)?;
+        }
+
+        Ok(())
+    }
+    fn visit_while(&mut self, condition: &Expr, body: &Stmt) -> Result<()> {
+        while evaluate(self, condition)?.is_truthy() {
+            execute(self, body)?;
         }
 
         Ok(())
@@ -144,6 +153,7 @@ impl ExpressionVisitor<Object> for Interpreter {
             _ => Err(anyhow!("invalid operation")),
         }
     }
+
     fn visit_unary(&mut self, operator: &Token, right: &Expr) -> Result<Object> {
         let right = evaluate(self, right)?;
 
@@ -153,12 +163,25 @@ impl ExpressionVisitor<Object> for Interpreter {
             _ => Err(anyhow!("invalid operation")),
         }
     }
+
     fn visit_grouping(&mut self, grouping: &Expr) -> Result<Object> {
         evaluate(self, grouping)
     }
+
     fn visit_literal(&mut self, literal: &Object) -> Result<Object> {
         Ok(literal.clone())
     }
+
+    fn visit_logical(&mut self, left: &Expr, operator: &Token, right: &Expr) -> Result<Object> {
+        let left = evaluate(self, left)?;
+
+        match (operator.token_type.clone(), left.is_truthy()) {
+            (TokenType::Or, true) | (TokenType::And, false) => Ok(left),
+            (TokenType::Or, false) | (TokenType::And, true) => evaluate(self, right),
+            (_, _) => unreachable!(),
+        }
+    }
+
     fn visit_variable(&mut self, token: &Token) -> Result<Object> {
         self.environment.get(token)
     }

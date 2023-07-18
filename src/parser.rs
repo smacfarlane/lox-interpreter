@@ -82,11 +82,65 @@ impl Parser {
         self.next_if(|token| match token {
             TokenTypeDiscriminants::Print
             | TokenTypeDiscriminants::LeftBrace
-            | TokenTypeDiscriminants::If => true,
+            | TokenTypeDiscriminants::If
+            | TokenTypeDiscriminants::For
+            | TokenTypeDiscriminants::While => true,
             _ => false,
         });
 
         let stmt = match token.token_type {
+            TokenType::For => {
+                self.next_if(|t| t == TokenTypeDiscriminants::LeftParen)
+                    .ok_or(ParseError::ExpectedToken(TokenType::LeftParen))?;
+
+                let token = self.peek().ok_or(anyhow!("expected token"))?;
+                let initializer: Option<Stmt> = match token.token_type.into() {
+                    TokenTypeDiscriminants::Semicolon => {
+                        self.next();
+                        None
+                    }
+                    TokenTypeDiscriminants::Var => {
+                        self.next();
+                        Some(self.var_declaration()?)
+                    }
+                    _ => Some(Stmt::Expression(Box::new(self.expression()?))),
+                };
+
+                let token = self.peek().ok_or(anyhow!("expected token"))?;
+                let condition: Expr = match token.token_type.into() {
+                    TokenTypeDiscriminants::Semicolon => Expr::Literal(Object::Boolean(true)),
+                    _ => self.expression()?,
+                };
+                self.next_if(|t| t == TokenTypeDiscriminants::Semicolon)
+                    .ok_or(ParseError::ExpectedToken(TokenType::Semicolon))?;
+
+                let token = self.peek().ok_or(anyhow!("expected token"))?;
+                let increment: Option<Expr> = match token.token_type.into() {
+                    TokenTypeDiscriminants::RightParen => None,
+                    _ => Some(self.expression()?),
+                };
+                self.next_if(|t| t == TokenTypeDiscriminants::RightParen)
+                    .ok_or(ParseError::ExpectedToken(TokenType::RightParen))?;
+
+                let mut body = self.statement()?;
+
+                if let Some(increment) = increment {
+                    body = Stmt::Block(vec![
+                        Box::new(body),
+                        Box::new(Stmt::Expression(Box::new(increment))),
+                    ]);
+                }
+                body = Stmt::While {
+                    condition,
+                    body: Box::new(body),
+                };
+
+                if let Some(initializer) = initializer {
+                    body = Stmt::Block(vec![Box::new(initializer), Box::new(body)]);
+                }
+
+                body
+            }
             TokenType::If => {
                 self.next_if(|t| t == TokenTypeDiscriminants::LeftParen)
                     .ok_or(ParseError::ExpectedToken(TokenType::LeftParen))?;
@@ -108,6 +162,19 @@ impl Parser {
                     condition,
                     then,
                     els,
+                }
+            }
+            TokenType::While => {
+                self.next_if(|t| t == TokenTypeDiscriminants::LeftParen)
+                    .ok_or(ParseError::ExpectedToken(TokenType::LeftParen));
+                let condition = self.expression()?;
+                self.next_if(|t| t == TokenTypeDiscriminants::RightParen)
+                    .ok_or(ParseError::ExpectedToken(TokenType::RightParen));
+                let body = self.statement()?;
+
+                Stmt::While {
+                    condition,
+                    body: Box::new(body),
                 }
             }
             TokenType::Print => {
@@ -160,7 +227,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expr> {
-        let mut e = self.equality()?;
+        let mut e = self.or()?;
 
         if let Some(token) = self.next_if(|t| t == TokenTypeDiscriminants::Equal) {
             let value = self.assignment()?;
@@ -175,6 +242,36 @@ impl Parser {
         };
 
         Ok(e)
+    }
+
+    fn or(&mut self) -> Result<Expr> {
+        let mut expr = self.and()?;
+
+        while let Some(operator) = self.next_if(|t| t == TokenTypeDiscriminants::Or) {
+            let right = self.and()?;
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn and(&mut self) -> Result<Expr> {
+        let mut expr = self.equality()?;
+
+        while let Some(operator) = self.next_if(|t| t == TokenTypeDiscriminants::And) {
+            let right = self.equality()?;
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            }
+        }
+
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Expr> {

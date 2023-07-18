@@ -31,6 +31,7 @@ impl std::ops::Add for Object {
             (Self::String(_), _) | (_, Self::String(_)) => {
                 Err(EvaluationError::StringConcatination.into())
             }
+            // (Self::Number(a), Self::Nil) | (Self::Nil, Self::Number(a)) => Ok(Self::Number(a)), // nil -> 0 in Lox
             (_, _) => Err(EvaluationError::Arithmatic("add".to_string()).into()),
         }
     }

@@ -8,6 +8,7 @@ pub trait ExpressionVisitor<T> {
     fn visit_grouping(&mut self, g: &Expr) -> Result<T>;
     fn visit_unary(&mut self, o: &Token, r: &Expr) -> Result<T>;
     fn visit_literal(&mut self, l: &data_types::Object) -> Result<T>;
+    fn visit_logical(&mut self, l: &Expr, o: &Token, r: &Expr) -> Result<T>;
     fn visit_variable(&mut self, n: &Token) -> Result<T>;
 }
 
@@ -17,6 +18,7 @@ pub trait StatementVisitor {
     fn visit_print(&mut self, e: &Expr) -> Result<()>;
     fn visit_expression(&mut self, e: &Expr) -> Result<()>;
     fn visit_variable(&mut self, n: &Token, i: Option<&Expr>) -> Result<()>;
+    fn visit_while(&mut self, c: &Expr, o: &Stmt) -> Result<()>;
 }
 
 #[derive(Debug, PartialEq)]
@@ -34,6 +36,11 @@ pub enum Expr {
         grouping: Box<Expr>,
     },
     Literal(data_types::Object),
+    Logical {
+        left: Box<Expr>,
+        operator: Token,
+        right: Box<Expr>,
+    },
     Unary {
         operator: Token,
         right: Box<Expr>,
@@ -55,6 +62,10 @@ pub enum Stmt {
         name: Token,
         initializer: Option<Expr>,
     },
+    While {
+        condition: Expr,
+        body: Box<Stmt>,
+    },
 }
 
 impl Stmt {
@@ -75,6 +86,7 @@ impl Stmt {
                 name: name,
                 initializer: init,
             } => visitor.visit_variable(name, init.as_ref()),
+            Self::While { condition, body } => visitor.visit_while(condition, body),
         }
     }
 }
@@ -93,6 +105,11 @@ impl Expr {
             } => visitor.visit_binary(left, operator, right),
             Self::Grouping { grouping } => visitor.visit_grouping(grouping),
             Self::Literal(literal) => visitor.visit_literal(literal),
+            Self::Logical {
+                left,
+                operator,
+                right,
+            } => visitor.visit_logical(left, operator, right),
             Self::Unary { operator, right } => visitor.visit_unary(operator, right),
             Self::Variable(name) => visitor.visit_variable(name),
         }
@@ -104,6 +121,11 @@ impl std::fmt::Display for Expr {
         match self {
             Expr::Assign { name, value } => write!(f, "({} = {})", name, value),
             Expr::Binary {
+                left,
+                operator,
+                right,
+            }
+            | Expr::Logical {
                 left,
                 operator,
                 right,
