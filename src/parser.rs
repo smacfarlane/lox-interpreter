@@ -6,6 +6,7 @@ use crate::{
 };
 
 use anyhow::{anyhow, Result};
+use tracing::instrument;
 
 #[derive(Debug)]
 pub(crate) struct Parser {
@@ -18,6 +19,7 @@ impl Parser {
         Parser { tokens, current: 0 }
     }
 
+    #[instrument(skip(self))]
     pub fn parse(&mut self) -> Result<Vec<Stmt>> {
         let mut statements = Vec::new();
 
@@ -31,6 +33,7 @@ impl Parser {
         Ok(statements)
     }
 
+    #[instrument(skip(self))]
     fn declaration(&mut self) -> Result<Option<Stmt>> {
         let token = self.peek().ok_or(anyhow!("expected token"))?;
 
@@ -57,6 +60,7 @@ impl Parser {
         Ok(statement)
     }
 
+    #[instrument(skip(self))]
     fn function(&mut self) -> Result<Stmt> {
         let name = self
             .next_if(|t| t == TokenTypeDiscriminants::Identifier)
@@ -104,6 +108,7 @@ impl Parser {
         })
     }
 
+    #[instrument(skip(self))]
     fn var_declaration(&mut self) -> Result<Stmt> {
         let name = {
             let token = self.peek().ok_or(anyhow!("expected token"))?;
@@ -127,6 +132,7 @@ impl Parser {
         Ok(Stmt::Var { name, initializer })
     }
 
+    #[instrument(skip(self))]
     fn statement(&mut self) -> Result<Stmt> {
         let token = self.peek().ok_or(anyhow!("expected token"))?;
 
@@ -261,6 +267,7 @@ impl Parser {
         Ok(stmt)
     }
 
+    #[instrument(skip(self))]
     fn block(&mut self) -> Result<Vec<Box<Stmt>>> {
         let mut statements = Vec::new();
 
@@ -288,10 +295,12 @@ impl Parser {
         Ok(statements)
     }
 
+    #[instrument(skip(self))]
     fn expression(&mut self) -> Result<Expr> {
         self.assignment()
     }
 
+    #[instrument(skip(self))]
     fn assignment(&mut self) -> Result<Expr> {
         let mut e = self.or()?;
 
@@ -310,6 +319,7 @@ impl Parser {
         Ok(e)
     }
 
+    #[instrument(skip(self))]
     fn or(&mut self) -> Result<Expr> {
         let mut expr = self.and()?;
 
@@ -325,6 +335,7 @@ impl Parser {
         Ok(expr)
     }
 
+    #[instrument(skip(self))]
     fn and(&mut self) -> Result<Expr> {
         let mut expr = self.equality()?;
 
@@ -340,6 +351,7 @@ impl Parser {
         Ok(expr)
     }
 
+    #[instrument(skip(self))]
     fn equality(&mut self) -> Result<Expr> {
         let mut e = self.comparison()?;
 
@@ -357,6 +369,7 @@ impl Parser {
         Ok(e)
     }
 
+    #[instrument(skip(self))]
     fn comparison(&mut self) -> Result<Expr> {
         let mut e = self.term()?;
 
@@ -378,6 +391,7 @@ impl Parser {
         Ok(e)
     }
 
+    #[instrument(skip(self))]
     fn term(&mut self) -> Result<Expr> {
         let mut e = self.factor()?;
 
@@ -394,6 +408,7 @@ impl Parser {
         Ok(e)
     }
 
+    #[instrument(skip(self))]
     fn factor(&mut self) -> Result<Expr> {
         let mut e = self.unary()?;
 
@@ -411,6 +426,7 @@ impl Parser {
         Ok(e)
     }
 
+    #[instrument(skip(self))]
     fn unary(&mut self) -> Result<Expr> {
         if let Some(operator) = self
             .next_if(|t| t == TokenTypeDiscriminants::Bang || t == TokenTypeDiscriminants::Minus)
@@ -425,6 +441,7 @@ impl Parser {
         self.call()
     }
 
+    #[instrument(skip(self))]
     fn call(&mut self) -> Result<Expr> {
         let mut expr = self.primary()?;
 
@@ -440,6 +457,7 @@ impl Parser {
         Ok(expr)
     }
 
+    #[instrument(skip(self))]
     fn finish_call(&mut self, callee: Expr) -> Result<Expr> {
         let mut arguments = Vec::new();
 
@@ -469,6 +487,7 @@ impl Parser {
         })
     }
 
+    #[instrument(skip(self))]
     fn primary(&mut self) -> Result<Expr> {
         if let Some(token) = self.next_if(|_| true) {
             let literal = match token.token_type {

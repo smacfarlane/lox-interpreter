@@ -5,6 +5,7 @@ use crate::error::{EvaluationError, RuntimeError};
 use crate::token::{Token, TokenType};
 
 use anyhow::{anyhow, Result};
+use tracing::instrument;
 
 #[derive(Debug)]
 pub struct Interpreter {
@@ -24,6 +25,7 @@ impl Interpreter {
             environment: Environment::new(),
         }
     }
+    #[instrument(skip(self), ret, level = "trace")]
     pub fn interpret(&mut self, statements: Vec<Stmt>) -> Result<()> {
         for statement in statements {
             execute(self, &statement)?;
@@ -32,6 +34,7 @@ impl Interpreter {
         Ok(())
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     pub fn with_environment(&self, e: Environment) -> Interpreter {
         Interpreter {
             globals: self.globals.clone(),
@@ -39,23 +42,20 @@ impl Interpreter {
         }
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     pub fn execute_block(&mut self, statements: &Vec<Box<Stmt>>) -> Result<Return> {
         self.environment.new_scope();
         for statement in statements {
-            match execute(self, &*statement) {
-                Err(e) => {
-                    self.environment.end_scope();
-                    return Err(e);
-                }
-                Ok(Return::Value(r)) => {
-                    self.environment.end_scope();
-                    return Ok(Return::Value(r));
-                }
-                Ok(Return::Bare) => {
-                    self.environment.end_scope();
-                    return Ok(Return::Bare);
-                }
-                Ok(Return::None) => {}
+            let result = match execute(self, &*statement) {
+                Err(e) => Some(Err(e)),
+                Ok(Return::Value(r)) => Some(Ok(Return::Value(r))),
+                Ok(Return::Bare) => Some(Ok(Return::Bare)),
+                Ok(Return::None) => None,
+            };
+
+            if let Some(result) = result {
+                let _ = self.environment.end_scope();
+                return result;
             }
         }
 
@@ -101,19 +101,25 @@ impl StatementVisitor for &mut Interpreter {
 }
 
 impl StatementVisitor for Interpreter {
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_block(&mut self, stmts: &Vec<Box<Stmt>>) -> Result<Return> {
         self.execute_block(stmts)
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_print(&mut self, expr: &Expr) -> Result<Return> {
         let value = evaluate(self, expr)?;
         println!("{}", value);
         Ok(Return::None)
     }
+
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_expression(&mut self, expr: &Expr) -> Result<Return> {
         evaluate(self, expr)?;
         Ok(Return::None)
     }
+
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_variable(&mut self, name: &Token, initializer: Option<&Expr>) -> Result<Return> {
         let mut value = Object::Nil;
 
@@ -129,6 +135,7 @@ impl StatementVisitor for Interpreter {
         Ok(Return::None)
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_if(&mut self, condition: &Expr, then: &Stmt, els: Option<&Stmt>) -> Result<Return> {
         if evaluate(self, condition)?.is_truthy() {
             execute(self, then)
@@ -139,6 +146,7 @@ impl StatementVisitor for Interpreter {
         }
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_while(&mut self, condition: &Expr, body: &Stmt) -> Result<Return> {
         while evaluate(self, condition)?.is_truthy() {
             let ret = execute(self, body)?;
@@ -150,6 +158,7 @@ impl StatementVisitor for Interpreter {
         Ok(Return::None)
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_function(
         &mut self,
         name: &Token,
@@ -163,6 +172,8 @@ impl StatementVisitor for Interpreter {
 
         Ok(Return::None)
     }
+
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_return(&mut self, _token: &Token, expr: Option<&Expr>) -> Result<Return> {
         match expr {
             Some(e) => Ok(Return::Value(evaluate(self, &e)?)),
@@ -172,6 +183,7 @@ impl StatementVisitor for Interpreter {
 }
 
 impl ExpressionVisitor<Object> for Interpreter {
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_assignment(&mut self, name: &Token, value: &Expr) -> Result<Object> {
         let value = evaluate(self, value)?;
         let name = name
@@ -182,6 +194,8 @@ impl ExpressionVisitor<Object> for Interpreter {
 
         Ok(value)
     }
+
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_binary(&mut self, left: &Expr, operator: &Token, right: &Expr) -> Result<Object> {
         let left: Object = evaluate(self, left)?.try_into()?;
         let right: Object = evaluate(self, right)?.try_into()?;
@@ -213,6 +227,7 @@ impl ExpressionVisitor<Object> for Interpreter {
         }
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_call(
         &mut self,
         callee: &Expr,
@@ -238,6 +253,7 @@ impl ExpressionVisitor<Object> for Interpreter {
         }
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_unary(&mut self, operator: &Token, right: &Expr) -> Result<Object> {
         let right = evaluate(self, right)?;
 
@@ -248,14 +264,17 @@ impl ExpressionVisitor<Object> for Interpreter {
         }
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_grouping(&mut self, grouping: &Expr) -> Result<Object> {
         evaluate(self, grouping)
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_literal(&mut self, literal: &Object) -> Result<Object> {
         Ok(literal.clone())
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_logical(&mut self, left: &Expr, operator: &Token, right: &Expr) -> Result<Object> {
         let left = evaluate(self, left)?;
 
@@ -266,6 +285,7 @@ impl ExpressionVisitor<Object> for Interpreter {
         }
     }
 
+    #[instrument(skip(self), ret, level = "trace")]
     fn visit_variable(&mut self, token: &Token) -> Result<Object> {
         self.environment.get(token)
     }

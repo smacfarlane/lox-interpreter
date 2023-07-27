@@ -4,6 +4,12 @@ use crate::interpreter::Interpreter;
 
 use anyhow::Result;
 
+use tracing_flame::FlameLayer;
+use tracing_subscriber::{
+    fmt::{self, format::FmtSpan},
+    prelude::*,
+};
+
 mod ast;
 mod data_types;
 mod environment;
@@ -16,9 +22,20 @@ mod token;
 fn main() {
     let mut args = std::env::args();
 
+    //let fmt_layer = fmt::Layer::default()
+    //.with_span_events(FmtSpan::ENTER)
+    //.pretty();
+
+    let (flame_layer, _guard) = FlameLayer::with_file("./tracing.folded").unwrap();
+
+    tracing_subscriber::registry()
+        //    .with(fmt_layer)
+        .with(flame_layer)
+        .init();
+
     let _ = match args.len() {
         1 => repl(),
-        2 => run_file(args.next().unwrap()),
+        2 => run_file(args.nth(1).unwrap()),
         _ => {
             println!("Usage: lox [script]");
             Ok(())
@@ -38,7 +55,14 @@ fn run(interpreter: &mut Interpreter, input: &str) -> Result<()> {
     Ok(())
 }
 
-fn run_file(_filename: String) -> Result<()> {
+fn run_file(filename: String) -> Result<()> {
+    let mut interpreter = Interpreter::new();
+    let file = std::fs::File::open(filename)?;
+
+    for line in std::io::BufReader::new(file).lines() {
+        run(&mut interpreter, &line.unwrap())?;
+    }
+
     Ok(())
 }
 
