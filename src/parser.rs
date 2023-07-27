@@ -1,6 +1,6 @@
 use crate::{
     ast::{Expr, Stmt},
-    data_types::Object,
+    data_types::{Object, Return},
     error::ParseError,
     token::{Token, TokenType, TokenTypeDiscriminants},
 };
@@ -35,6 +35,10 @@ impl Parser {
         let token = self.peek().ok_or(anyhow!("expected token"))?;
 
         let statement = match token.token_type {
+            TokenType::Fun => {
+                self.next();
+                self.function()
+            }
             TokenType::Var => {
                 self.next();
                 self.var_declaration()
@@ -51,6 +55,53 @@ impl Parser {
         };
 
         Ok(statement)
+    }
+
+    fn function(&mut self) -> Result<Stmt> {
+        let name = self
+            .next_if(|t| t == TokenTypeDiscriminants::Identifier)
+            .ok_or(ParseError::ExpectedToken(TokenType::Identifier(
+                "".to_string(),
+            )))?;
+        self.next_if(|t| t == TokenTypeDiscriminants::LeftParen)
+            .ok_or(ParseError::ExpectedToken(TokenType::LeftParen))?;
+        let mut parameters = Vec::new();
+
+        let token = self.peek().ok_or(anyhow!("expected token"))?;
+        if token.token_type != TokenType::RightParen {
+            loop {
+                if parameters.len() > 255 {
+                    return Err(anyhow!("can't have more than 255 parameters"));
+                }
+
+                let parameter = self
+                    .next_if(|t| t == TokenTypeDiscriminants::Identifier)
+                    .ok_or(ParseError::ExpectedToken(TokenType::Identifier(
+                        "".to_string(),
+                    )))?;
+
+                parameters.push(parameter);
+
+                if self
+                    .next_if(|t| t == TokenTypeDiscriminants::Comma)
+                    .is_none()
+                {
+                    break;
+                }
+            }
+        }
+        self.next_if(|t| t == TokenTypeDiscriminants::RightParen)
+            .ok_or(ParseError::ExpectedToken(TokenType::RightParen))?;
+
+        self.next_if(|t| t == TokenTypeDiscriminants::LeftBrace)
+            .ok_or(ParseError::ExpectedToken(TokenType::RightBrace))?;
+        let body = self.block()?;
+
+        Ok(Stmt::Function {
+            name,
+            params: parameters,
+            body,
+        })
     }
 
     fn var_declaration(&mut self) -> Result<Stmt> {
@@ -166,10 +217,10 @@ impl Parser {
             }
             TokenType::While => {
                 self.next_if(|t| t == TokenTypeDiscriminants::LeftParen)
-                    .ok_or(ParseError::ExpectedToken(TokenType::LeftParen));
+                    .ok_or(ParseError::ExpectedToken(TokenType::LeftParen))?;
                 let condition = self.expression()?;
                 self.next_if(|t| t == TokenTypeDiscriminants::RightParen)
-                    .ok_or(ParseError::ExpectedToken(TokenType::RightParen));
+                    .ok_or(ParseError::ExpectedToken(TokenType::RightParen))?;
                 let body = self.statement()?;
 
                 Stmt::While {
@@ -184,6 +235,21 @@ impl Parser {
                 Stmt::Print(Box::new(value))
             }
             TokenType::LeftBrace => Stmt::Block(self.block()?),
+            TokenType::Return => {
+                let ret = self
+                    .next_if(|t| t == TokenTypeDiscriminants::Return)
+                    .ok_or(ParseError::ExpectedToken(TokenType::Return))?;
+                let token = self.peek().ok_or(anyhow!("expected token"))?;
+                let value = match token.token_type {
+                    TokenType::Semicolon => None,
+                    _ => Some(self.expression()?),
+                };
+
+                self.next_if(|t| t == TokenTypeDiscriminants::Semicolon)
+                    .ok_or(ParseError::ExpectedToken(TokenType::Semicolon))?;
+
+                Stmt::Return { token: ret, value }
+            }
             _ => {
                 let value: Expr = self.expression()?;
                 self.next_if(|t| t == TokenTypeDiscriminants::Semicolon)
@@ -350,17 +416,60 @@ impl Parser {
             .next_if(|t| t == TokenTypeDiscriminants::Bang || t == TokenTypeDiscriminants::Minus)
         {
             let right = self.unary()?;
-            Ok(Expr::Unary {
+            return Ok(Expr::Unary {
                 operator,
                 right: Box::new(right),
-            })
-        } else {
-            self.primary()
+            });
         }
+
+        self.call()
+    }
+
+    fn call(&mut self) -> Result<Expr> {
+        let mut expr = self.primary()?;
+
+        loop {
+            match self.next_if(|t| t == TokenTypeDiscriminants::LeftParen) {
+                Some(_) => {
+                    expr = self.finish_call(expr)?;
+                }
+                None => break,
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Result<Expr> {
+        let mut arguments = Vec::new();
+
+        let token = self.peek().ok_or(anyhow!("expected token"))?;
+        if token.token_type != TokenType::RightParen {
+            loop {
+                if arguments.len() >= 255 {
+                    return Err(anyhow!("cannot have more that 255 arguments"));
+                }
+                arguments.push(Box::new(self.expression()?));
+                if self
+                    .next_if(|t| t == TokenTypeDiscriminants::Comma)
+                    .is_none()
+                {
+                    break;
+                }
+            }
+        }
+        let paren = self
+            .next_if(|t| t == TokenTypeDiscriminants::RightParen)
+            .ok_or(ParseError::ExpectedToken(TokenType::RightParen))?;
+
+        Ok(Expr::Call {
+            callee: Box::new(callee),
+            paren,
+            arguments,
+        })
     }
 
     fn primary(&mut self) -> Result<Expr> {
-        // TODO: Could this be .next()?
         if let Some(token) = self.next_if(|_| true) {
             let literal = match token.token_type {
                 TokenType::False => Expr::Literal(Object::Boolean(false)),

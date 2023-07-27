@@ -1,14 +1,33 @@
 use anyhow::Result;
 
-use crate::error::EvaluationError;
+use std::rc::Rc;
 
-#[derive(Clone, Debug, PartialEq)]
+use crate::ast::Stmt;
+use crate::environment::Environment;
+use crate::error::EvaluationError;
+use crate::interpreter::Interpreter;
+use crate::token::Token;
+
+#[derive(Debug, Clone)]
 pub enum Object {
     Nil,
     Boolean(bool),
     String(String),
     Number(f64),
-    // Object(Box<Object>)
+    Function(Rc<dyn Callable>),
+    // Function(C), // Object(Box<Object>)
+}
+
+impl PartialEq for Object {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Nil, Self::Nil) => true,
+            (Self::Boolean(ref l), Self::Boolean(ref r)) => l == r,
+            (Self::String(ref l), Self::String(ref r)) => l == r,
+            (Self::Number(ref l), Self::Number(ref r)) => l == r,
+            (_, _) => false,
+        }
+    }
 }
 
 impl Object {
@@ -18,6 +37,76 @@ impl Object {
             Self::Boolean(false) => false,
             _ => unreachable!(),
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum Return {
+    Value(Object), // return "foo";
+    Bare,          // return;
+    None,          // <no return statement>
+}
+
+impl Return {
+    pub fn is_explicit(&self) -> bool {
+        match self {
+            Self::Value(_) | Self::Bare => true,
+            Self::None => false,
+        }
+    }
+}
+
+pub trait Callable: std::fmt::Debug {
+    fn arity(&self) -> u8; // Max 255 arguments
+    fn call(&self, i: &Interpreter, arguments: &Vec<Object>) -> Result<Return>;
+}
+
+// TODO: We should only allow storing the correct enum variant
+#[derive(Debug, PartialEq)]
+pub struct Function {
+    name: Token, // Identifier
+    params: Vec<Token>,
+    body: Vec<Box<Stmt>>, // Block
+}
+
+impl Function {
+    pub fn new(name: Token, params: Vec<Token>, body: Vec<Box<Stmt>>) -> Function {
+        Function { name, params, body }
+    }
+}
+
+impl Callable for Function {
+    fn arity(&self) -> u8 {
+        self.params.len() as u8
+    }
+    fn call(&self, interpreter: &Interpreter, arguments: &Vec<Object>) -> Result<Return> {
+        let mut environment = Environment::new();
+
+        for (param, arg) in self.params.iter().zip(arguments.iter()) {
+            let param = param.lexeme.clone().unwrap(); // TODO: Danger zone
+            environment.define(param, arg.clone());
+        }
+
+        let mut interpreter = interpreter.with_environment(environment);
+
+        interpreter.execute_block(&self.body)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Clock;
+
+impl Callable for Clock {
+    fn arity(&self) -> u8 {
+        0
+    }
+    fn call(&self, _: &Interpreter, _: &Vec<Object>) -> Result<Return> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .expect("SystemTime before 1970-01-01 00:00:00 UTC");
+        let now = now.as_secs_f64() * 1000.0;
+
+        Ok(Return::Value(Object::Number(now)))
     }
 }
 
@@ -39,7 +128,7 @@ impl std::ops::Add for Object {
 
 impl std::ops::Sub for Object {
     type Output = Result<Object>;
-    fn sub(self, rhs: Self) -> Result<Object> {
+    fn sub(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (Self::Number(a), Self::Number(b)) => Ok(Self::Number(a - b)),
             (_, _) => Err(EvaluationError::Arithmatic("subtract".to_string()).into()),
@@ -49,7 +138,7 @@ impl std::ops::Sub for Object {
 
 impl std::ops::Mul for Object {
     type Output = Result<Object>;
-    fn mul(self, rhs: Self) -> Result<Object> {
+    fn mul(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (Self::Number(a), Self::Number(b)) => Ok(Self::Number(a * b)),
             (_, _) => Err(EvaluationError::Arithmatic("multiply".to_string()).into()),
@@ -59,7 +148,7 @@ impl std::ops::Mul for Object {
 
 impl std::ops::Div for Object {
     type Output = Result<Object>;
-    fn div(self, rhs: Object) -> Result<Object> {
+    fn div(self, rhs: Object) -> Self::Output {
         match (self, rhs) {
             (Self::Number(a), Self::Number(b)) => Ok(Self::Number(a / b)),
             (_, _) => Err(EvaluationError::Arithmatic("divide".to_string()).into()),
@@ -70,7 +159,7 @@ impl std::ops::Div for Object {
 impl std::ops::Neg for Object {
     type Output = Result<Object>;
 
-    fn neg(self) -> Result<Object> {
+    fn neg(self) -> Self::Output {
         match self {
             Self::Number(a) => Ok(Self::Number(a.neg())),
             _ => Err(EvaluationError::Negation.into()),
@@ -104,10 +193,11 @@ impl std::ops::Not for &Object {
 impl std::fmt::Display for Object {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::Number(n) => write!(f, "{}", n),
-            Self::String(s) => write!(f, "{}", s),
-            Self::Boolean(b) => write!(f, "{}", b),
+            Self::Number(ref n) => write!(f, "{}", n),
+            Self::String(ref s) => write!(f, "{}", s),
+            Self::Boolean(ref b) => write!(f, "{}", b),
             Self::Nil => write!(f, "nil"),
+            Self::Function(_) => write!(f, "<fn placehodler>"),
         }
     }
 }

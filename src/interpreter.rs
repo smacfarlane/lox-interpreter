@@ -1,6 +1,6 @@
 use crate::ast::{Expr, ExpressionVisitor, StatementVisitor, Stmt};
-use crate::data_types::Object;
-use crate::environment::{self, Environment};
+use crate::data_types::{Clock, Function, Object, Return};
+use crate::environment::Environment;
 use crate::error::{EvaluationError, RuntimeError};
 use crate::token::{Token, TokenType};
 
@@ -8,12 +8,19 @@ use anyhow::{anyhow, Result};
 
 #[derive(Debug)]
 pub struct Interpreter {
+    globals: Environment,
     environment: Environment,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
+        let mut globals = Environment::new();
+        globals.define(
+            "clock".to_string(),
+            Object::Function(std::rc::Rc::new(Clock)),
+        );
         Interpreter {
+            globals: Environment::new(),
             environment: Environment::new(),
         }
     }
@@ -25,61 +32,89 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute_block(&mut self, statements: &Vec<Box<Stmt>>) -> Result<()> {
-        self.environment.new_scope();
-        let mut had_error = Ok(());
+    pub fn with_environment(&self, e: Environment) -> Interpreter {
+        Interpreter {
+            globals: self.globals.clone(),
+            environment: e,
+        }
+    }
 
+    pub fn execute_block(&mut self, statements: &Vec<Box<Stmt>>) -> Result<Return> {
+        self.environment.new_scope();
         for statement in statements {
-            if let Err(e) = execute(self, &*statement) {
-                had_error = Err(e);
-                break;
+            match execute(self, &*statement) {
+                Err(e) => {
+                    self.environment.end_scope();
+                    return Err(e);
+                }
+                Ok(Return::Value(r)) => {
+                    self.environment.end_scope();
+                    return Ok(Return::Value(r));
+                }
+                Ok(Return::Bare) => {
+                    self.environment.end_scope();
+                    return Ok(Return::Bare);
+                }
+                Ok(Return::None) => {}
             }
         }
 
-        self.environment.end_scope();
-        had_error
+        self.environment.end_scope()?;
+        Ok(Return::None)
     }
 }
 
 impl StatementVisitor for &mut Interpreter {
-    fn visit_block(&mut self, stmts: &Vec<Box<Stmt>>) -> Result<()> {
+    fn visit_block(&mut self, stmts: &Vec<Box<Stmt>>) -> Result<Return> {
         (**self).visit_block(stmts)
     }
 
-    fn visit_print(&mut self, expr: &Expr) -> Result<()> {
+    fn visit_print(&mut self, expr: &Expr) -> Result<Return> {
         (**self).visit_print(expr)
     }
-    fn visit_expression(&mut self, expr: &Expr) -> Result<()> {
+    fn visit_expression(&mut self, expr: &Expr) -> Result<Return> {
         (**self).visit_expression(expr)
     }
-    fn visit_variable(&mut self, name: &Token, initializer: Option<&Expr>) -> Result<()> {
+    fn visit_variable(&mut self, name: &Token, initializer: Option<&Expr>) -> Result<Return> {
         // Disambiguate between StatementVisitor and ExpressionVisitor
         StatementVisitor::visit_variable(*self, name, initializer)
     }
-    fn visit_if(&mut self, condition: &Expr, then: &Stmt, els: Option<&Stmt>) -> Result<()> {
+    fn visit_if(&mut self, condition: &Expr, then: &Stmt, els: Option<&Stmt>) -> Result<Return> {
         (**self).visit_if(condition, then, els)
     }
-    fn visit_while(&mut self, condition: &Expr, body: &Stmt) -> Result<()> {
+    fn visit_while(&mut self, condition: &Expr, body: &Stmt) -> Result<Return> {
         (**self).visit_while(condition, body)
+    }
+
+    fn visit_function(
+        &mut self,
+        name: &Token,
+        parameters: &Vec<Token>,
+        body: &Vec<Box<Stmt>>,
+    ) -> Result<Return> {
+        (**self).visit_function(name, parameters, body)
+    }
+
+    fn visit_return(&mut self, token: &Token, expr: Option<&Expr>) -> Result<Return> {
+        (**self).visit_return(token, expr)
     }
 }
 
 impl StatementVisitor for Interpreter {
-    fn visit_block(&mut self, stmts: &Vec<Box<Stmt>>) -> Result<()> {
+    fn visit_block(&mut self, stmts: &Vec<Box<Stmt>>) -> Result<Return> {
         self.execute_block(stmts)
     }
 
-    fn visit_print(&mut self, expr: &Expr) -> Result<()> {
+    fn visit_print(&mut self, expr: &Expr) -> Result<Return> {
         let value = evaluate(self, expr)?;
-
         println!("{}", value);
-        Ok(())
+        Ok(Return::None)
     }
-    fn visit_expression(&mut self, expr: &Expr) -> Result<()> {
+    fn visit_expression(&mut self, expr: &Expr) -> Result<Return> {
         evaluate(self, expr)?;
-        Ok(())
+        Ok(Return::None)
     }
-    fn visit_variable(&mut self, name: &Token, initializer: Option<&Expr>) -> Result<()> {
+    fn visit_variable(&mut self, name: &Token, initializer: Option<&Expr>) -> Result<Return> {
         let mut value = Object::Nil;
 
         if let Some(initializer) = initializer {
@@ -91,24 +126,48 @@ impl StatementVisitor for Interpreter {
             .ok_or(RuntimeError::UnexpectedToken(name.clone()))?;
         self.environment.define(name, value);
 
-        Ok(())
+        Ok(Return::None)
     }
 
-    fn visit_if(&mut self, condition: &Expr, then: &Stmt, els: Option<&Stmt>) -> Result<()> {
+    fn visit_if(&mut self, condition: &Expr, then: &Stmt, els: Option<&Stmt>) -> Result<Return> {
         if evaluate(self, condition)?.is_truthy() {
-            execute(self, then)?;
+            execute(self, then)
         } else if let Some(els) = els {
-            execute(self, els)?;
+            execute(self, els)
+        } else {
+            Ok(Return::None)
         }
-
-        Ok(())
     }
-    fn visit_while(&mut self, condition: &Expr, body: &Stmt) -> Result<()> {
+
+    fn visit_while(&mut self, condition: &Expr, body: &Stmt) -> Result<Return> {
         while evaluate(self, condition)?.is_truthy() {
-            execute(self, body)?;
+            let ret = execute(self, body)?;
+            if ret.is_explicit() {
+                return Ok(ret);
+            }
         }
 
-        Ok(())
+        Ok(Return::None)
+    }
+
+    fn visit_function(
+        &mut self,
+        name: &Token,
+        arguments: &Vec<Token>,
+        body: &Vec<Box<Stmt>>,
+    ) -> Result<Return> {
+        let function = Function::new(name.clone(), arguments.clone(), body.clone());
+        let name = name.lexeme.clone().unwrap();
+        self.environment
+            .define(name, Object::Function(std::rc::Rc::new(function)));
+
+        Ok(Return::None)
+    }
+    fn visit_return(&mut self, _token: &Token, expr: Option<&Expr>) -> Result<Return> {
+        match expr {
+            Some(e) => Ok(Return::Value(evaluate(self, &e)?)),
+            None => Ok(Return::Bare),
+        }
     }
 }
 
@@ -124,8 +183,8 @@ impl ExpressionVisitor<Object> for Interpreter {
         Ok(value)
     }
     fn visit_binary(&mut self, left: &Expr, operator: &Token, right: &Expr) -> Result<Object> {
-        let left = evaluate(self, left)?;
-        let right = evaluate(self, right)?;
+        let left: Object = evaluate(self, left)?.try_into()?;
+        let right: Object = evaluate(self, right)?.try_into()?;
 
         match operator.token_type {
             TokenType::Minus => left - right,
@@ -151,6 +210,31 @@ impl ExpressionVisitor<Object> for Interpreter {
             TokenType::EqualEqual => Ok(Object::Boolean(left.eq(&right))),
             TokenType::BangEqual => Ok(Object::Boolean(!left.eq(&right))),
             _ => Err(anyhow!("invalid operation")),
+        }
+    }
+
+    fn visit_call(
+        &mut self,
+        callee: &Expr,
+        _paren: &Token,
+        arguments: &Vec<Box<Expr>>,
+    ) -> Result<Object> {
+        let callee = evaluate(self, callee)?;
+
+        let arguments = arguments
+            .iter()
+            .map(|arg| evaluate(self, arg))
+            .collect::<Result<Vec<Object>>>()?;
+
+        let callee = match callee {
+            Object::Function(f) => Ok(f),
+            _ => Err(anyhow!("attempting to call primitive as function")),
+        }?;
+
+        match callee.call(self, &arguments)? {
+            Return::Value(e) => Ok(e),
+            Return::Bare => Ok(Object::Nil),
+            Return::None => Ok(Object::Nil), // TODO: What is the right thing to do here?
         }
     }
 
@@ -195,7 +279,7 @@ where
 }
 
 // fn execute
-fn execute<V>(visitor: &mut V, statement: &Stmt) -> Result<()>
+fn execute<V>(visitor: &mut V, statement: &Stmt) -> Result<Return>
 where
     V: StatementVisitor,
 {

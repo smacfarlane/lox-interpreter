@@ -70,6 +70,7 @@ impl Environment {
             .clone()
             .ok_or(RuntimeError::UnexpectedToken(token.clone()))?;
 
+        dbg!(&self.scopes);
         for scope in self.scopes.iter().rev() {
             if scope.contains_key(&name) {
                 return Ok(scope.get(&name).unwrap().to_owned());
