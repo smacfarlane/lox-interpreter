@@ -6,8 +6,14 @@ use std::collections::HashMap;
 use anyhow::{anyhow, Result};
 use tracing::instrument;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct Scope(HashMap<String, Object>);
+
+impl Scope {
+    pub fn new() -> Scope {
+        Scope(HashMap::new())
+    }
+}
 
 impl std::ops::Deref for Scope {
     type Target = HashMap<String, Object>;
@@ -22,7 +28,7 @@ impl std::ops::DerefMut for Scope {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Environment {
     scopes: Vec<Scope>,
 }
@@ -30,7 +36,13 @@ pub struct Environment {
 impl Environment {
     pub fn new() -> Self {
         Environment {
-            scopes: vec![Scope(HashMap::new())],
+            scopes: vec![Scope::new()],
+        }
+    }
+
+    pub fn contains(e: &Environment) -> Self {
+        Environment {
+            scopes: e.scopes.clone()
         }
     }
 

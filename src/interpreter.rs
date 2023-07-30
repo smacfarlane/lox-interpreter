@@ -38,7 +38,7 @@ impl Interpreter {
     pub fn with_environment(&self, e: Environment) -> Interpreter {
         Interpreter {
             globals: self.globals.clone(),
-            environment: e,
+            environment: e
         }
     }
 
@@ -165,7 +165,12 @@ impl StatementVisitor for Interpreter {
         arguments: &Vec<Token>,
         body: &Vec<Box<Stmt>>,
     ) -> Result<Return> {
-        let function = Function::new(name.clone(), arguments.clone(), body.clone());
+        let function = Function::new(
+            name.clone(),
+            arguments.clone(),
+            body.clone(),
+            self.environment.clone(),
+        );
         let name = name.lexeme.clone().unwrap();
         self.environment
             .define(name, Object::Function(std::rc::Rc::new(function)));

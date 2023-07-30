@@ -61,17 +61,27 @@ pub trait Callable: std::fmt::Debug {
     fn call(&self, i: &Interpreter, arguments: &Vec<Object>) -> Result<Return>;
 }
 
-// TODO: We should only allow storing the correct enum variant
 #[derive(Debug, PartialEq)]
 pub struct Function {
     name: Token, // Identifier
     params: Vec<Token>,
     body: Vec<Box<Stmt>>, // Block
+    closure: Environment,
 }
 
 impl Function {
-    pub fn new(name: Token, params: Vec<Token>, body: Vec<Box<Stmt>>) -> Function {
-        Function { name, params, body }
+    pub fn new(
+        name: Token,
+        params: Vec<Token>,
+        body: Vec<Box<Stmt>>,
+        closure: Environment,
+    ) -> Function {
+        Function {
+            name,
+            params,
+            body,
+            closure,
+        }
     }
 }
 
@@ -80,7 +90,7 @@ impl Callable for Function {
         self.params.len() as u8
     }
     fn call(&self, interpreter: &Interpreter, arguments: &Vec<Object>) -> Result<Return> {
-        let mut environment = Environment::new();
+        let mut environment = Environment::contains(&self.closure);
 
         for (param, arg) in self.params.iter().zip(arguments.iter()) {
             let param = param.lexeme.clone().unwrap(); // TODO: Danger zone

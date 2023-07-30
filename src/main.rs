@@ -50,7 +50,7 @@ fn run(interpreter: &mut Interpreter, input: &str) -> Result<()> {
     let mut parser = crate::parser::Parser::new(tokens);
     let statements = parser.parse()?;
 
-    interpreter.interpret(statements)?;
+    dbg!(interpreter.interpret(statements))?;
 
     Ok(())
 }
@@ -59,9 +59,13 @@ fn run_file(filename: String) -> Result<()> {
     let mut interpreter = Interpreter::new();
     let file = std::fs::File::open(filename)?;
 
-    for line in std::io::BufReader::new(file).lines() {
-        run(&mut interpreter, &line.unwrap())?;
-    }
+    //   for line in std::io::BufReader::new(file).lines() {
+    //      dbg!(run(&mut interpreter, &line.unwrap()))?;
+    // }
+    //
+    //
+    let program = std::io::read_to_string(file).unwrap();
+    dbg!(run(&mut interpreter, &program)?);
 
     Ok(())
 }

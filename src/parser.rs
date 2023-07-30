@@ -1,6 +1,6 @@
 use crate::{
     ast::{Expr, Stmt},
-    data_types::{Object, Return},
+    data_types::Object,
     error::ParseError,
     token::{Token, TokenType, TokenTypeDiscriminants},
 };
@@ -52,7 +52,7 @@ impl Parser {
         let statement = match statement {
             Ok(statement) => Some(statement),
             Err(_) => {
-                self.synchronize();
+                self.synchronize()?;
                 None
             }
         };

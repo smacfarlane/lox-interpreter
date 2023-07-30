@@ -102,7 +102,7 @@ impl Stmt {
             Self::Function { name, params, body } => visitor.visit_function(name, params, body),
             Self::Return { token, value } => visitor.visit_return(token, value.as_ref()),
             Self::Var {
-                name: name,
+                name,
                 initializer: init,
             } => visitor.visit_variable(name, init.as_ref()),
             Self::While { condition, body } => visitor.visit_while(condition, body),
