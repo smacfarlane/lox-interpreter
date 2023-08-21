@@ -38,7 +38,7 @@ impl Interpreter {
     pub fn with_environment(&self, e: Environment) -> Interpreter {
         Interpreter {
             globals: self.globals.clone(),
-            environment: e
+            environment: e,
         }
     }
 
@@ -284,9 +284,9 @@ impl ExpressionVisitor<Object> for Interpreter {
         let left = evaluate(self, left)?;
 
         match (operator.token_type.clone(), left.is_truthy()) {
-            (TokenType::Or, true) | (TokenType::And, false) => Ok(left),
-            (TokenType::Or, false) | (TokenType::And, true) => evaluate(self, right),
-            (_, _) => unreachable!(),
+            (TokenType::Or, false) => evaluate(self, right),
+            (TokenType::Or, true) | (_, false) => Ok(left),
+            (_, _) => evaluate(self, right),
         }
     }
 

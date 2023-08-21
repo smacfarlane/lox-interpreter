@@ -15,7 +15,6 @@ pub enum Object {
     String(String),
     Number(f64),
     Function(Rc<dyn Callable>),
-    // Function(C), // Object(Box<Object>)
 }
 
 impl PartialEq for Object {
@@ -194,8 +193,8 @@ impl std::ops::Not for &Object {
     fn not(self) -> Self::Output {
         match *self {
             Object::Boolean(a) => Self::Output::Boolean(!a),
-            Object::Nil => Self::Output::Boolean(false),
-            _ => Self::Output::Boolean(true),
+            Object::Nil => Self::Output::Boolean(true),
+            _ => Self::Output::Boolean(false),
         }
     }
 }
@@ -219,5 +218,22 @@ impl PartialOrd for Object {
             (Self::Number(a), Self::Number(b)) => a.partial_cmp(b),
             (_, _) => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn truthiness() {
+        use super::Object::*;
+
+        // Truthy
+        assert!(Boolean(true).is_truthy());
+        assert!(String("something".to_string()).is_truthy());
+        assert!(Number(1.23).is_truthy());
+
+        // Falsy
+        assert!(!Nil.is_truthy());
+        assert!(!Boolean(false).is_truthy());
     }
 }

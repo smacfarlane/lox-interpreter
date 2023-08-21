@@ -5,10 +5,7 @@ use crate::interpreter::Interpreter;
 use anyhow::Result;
 
 use tracing_flame::FlameLayer;
-use tracing_subscriber::{
-    fmt::{self, format::FmtSpan},
-    prelude::*,
-};
+use tracing_subscriber::prelude::*;
 
 mod ast;
 mod data_types;
@@ -22,18 +19,11 @@ mod token;
 fn main() {
     let mut args = std::env::args();
 
-    //let fmt_layer = fmt::Layer::default()
-    //.with_span_events(FmtSpan::ENTER)
-    //.pretty();
-
     let (flame_layer, _guard) = FlameLayer::with_file("./tracing.folded").unwrap();
 
-    tracing_subscriber::registry()
-        //    .with(fmt_layer)
-        .with(flame_layer)
-        .init();
+    tracing_subscriber::registry().with(flame_layer).init();
 
-    let _ = match args.len() {
+    let result = match args.len() {
         1 => repl(),
         2 => run_file(args.nth(1).unwrap()),
         _ => {
@@ -41,6 +31,14 @@ fn main() {
             Ok(())
         }
     };
+
+    match result {
+        Ok(_) => {}
+        Err(e) => {
+            dbg!(e);
+            std::process::exit(1);
+        }
+    }
 }
 
 fn run(interpreter: &mut Interpreter, input: &str) -> Result<()> {
@@ -50,7 +48,7 @@ fn run(interpreter: &mut Interpreter, input: &str) -> Result<()> {
     let mut parser = crate::parser::Parser::new(tokens);
     let statements = parser.parse()?;
 
-    dbg!(interpreter.interpret(statements))?;
+    interpreter.interpret(statements)?;
 
     Ok(())
 }
@@ -65,7 +63,7 @@ fn run_file(filename: String) -> Result<()> {
     //
     //
     let program = std::io::read_to_string(file).unwrap();
-    dbg!(run(&mut interpreter, &program)?);
+    run(&mut interpreter, &program)?;
 
     Ok(())
 }
