@@ -9,7 +9,6 @@ use tracing::instrument;
 
 #[derive(Debug)]
 pub struct Interpreter {
-    globals: Environment,
     environment: Environment,
 }
 
@@ -21,10 +20,29 @@ impl Interpreter {
             Object::Function(std::rc::Rc::new(Clock)),
         );
         Interpreter {
-            globals: Environment::new(),
-            environment: Environment::new(),
+            environment: globals,
         }
     }
+
+    // #[instrument(skip(self), ret, level = "trace")]
+    // pub fn resolve(&mut self, name: Expr, depth: usize) {
+    // dbg!(&name);
+    // println!("Resolve: {}: {}", &name, self.locals.len());
+    // self.locals.insert(name.clone(), depth);
+    // println!("Resolve: {}: {}", &name, self.locals.len());
+    // }
+
+    // pub fn look_up_variable(&self, name: Token) -> Result<Object> {
+    //     let lexeme = name.lexeme.clone().unwrap();
+    //     let name = Expr::Variable(name);
+    //
+    //
+    //     match self.locals.get(&name) {
+    //         Some(distance) => self.environment.get_at(*distance, &lexeme),
+    //         None => self.environment.get_global(&lexeme),
+    //     }
+    // }
+
     #[instrument(skip(self), ret, level = "trace")]
     pub fn interpret(&mut self, statements: Vec<Stmt>) -> Result<()> {
         for statement in statements {
@@ -36,15 +54,11 @@ impl Interpreter {
 
     #[instrument(skip(self), ret, level = "trace")]
     pub fn with_environment(&self, e: Environment) -> Interpreter {
-        Interpreter {
-            globals: self.globals.clone(),
-            environment: e,
-        }
+        Interpreter { environment: e }
     }
 
     #[instrument(skip(self), ret, level = "trace")]
     pub fn execute_block(&mut self, statements: &Vec<Box<Stmt>>) -> Result<Return> {
-        self.environment.new_scope();
         for statement in statements {
             let result = match execute(self, &*statement) {
                 Err(e) => Some(Err(e)),
@@ -54,12 +68,10 @@ impl Interpreter {
             };
 
             if let Some(result) = result {
-                let _ = self.environment.end_scope();
                 return result;
             }
         }
 
-        self.environment.end_scope()?;
         Ok(Return::None)
     }
 }
@@ -72,9 +84,11 @@ impl StatementVisitor for &mut Interpreter {
     fn visit_print(&mut self, expr: &Expr) -> Result<Return> {
         (**self).visit_print(expr)
     }
+
     fn visit_expression(&mut self, expr: &Expr) -> Result<Return> {
         (**self).visit_expression(expr)
     }
+
     fn visit_variable(&mut self, name: &Token, initializer: Option<&Expr>) -> Result<Return> {
         // Disambiguate between StatementVisitor and ExpressionVisitor
         StatementVisitor::visit_variable(*self, name, initializer)
@@ -103,7 +117,10 @@ impl StatementVisitor for &mut Interpreter {
 impl StatementVisitor for Interpreter {
     #[instrument(skip(self), ret, level = "trace")]
     fn visit_block(&mut self, stmts: &Vec<Box<Stmt>>) -> Result<Return> {
-        self.execute_block(stmts)
+        self.environment.new_scope();
+        let result = self.execute_block(stmts);
+        self.environment.end_scope();
+        result
     }
 
     #[instrument(skip(self), ret, level = "trace")]
@@ -130,6 +147,7 @@ impl StatementVisitor for Interpreter {
             .lexeme
             .clone()
             .ok_or(RuntimeError::UnexpectedToken(name.clone()))?;
+
         self.environment.define(name, value);
 
         Ok(Return::None)
@@ -172,6 +190,7 @@ impl StatementVisitor for Interpreter {
             self.environment.clone(),
         );
         let name = name.lexeme.clone().unwrap();
+
         self.environment
             .define(name, Object::Function(std::rc::Rc::new(function)));
 
@@ -189,13 +208,24 @@ impl StatementVisitor for Interpreter {
 
 impl ExpressionVisitor<Object> for Interpreter {
     #[instrument(skip(self), ret, level = "trace")]
-    fn visit_assignment(&mut self, name: &Token, value: &Expr) -> Result<Object> {
-        let value = evaluate(self, value)?;
-        let name = name
+    fn visit_assignment(&mut self, name: &Token, expr: &Expr) -> Result<Object> {
+        let value = evaluate(self, expr)?;
+        let lexeme = name
             .lexeme
             .clone()
             .ok_or(RuntimeError::UnexpectedToken(name.clone()))?;
-        self.environment.assign(name, value.clone())?;
+
+        self.environment.assign(lexeme, value.clone())?;
+        // let name = Expr::Assign {
+        //     name: name.clone(),
+        //     value: Box::new(expr.clone()),
+        // };
+        // match self.locals.get(&name) {
+        //     Some(distance) => self
+        //         .environment
+        //         .assign_at(*distance, lexeme, value.clone())?,
+        //     None => self.environment.assign_global(lexeme, value.clone())?,
+        // }
 
         Ok(value)
     }
@@ -292,7 +322,8 @@ impl ExpressionVisitor<Object> for Interpreter {
 
     #[instrument(skip(self), ret, level = "trace")]
     fn visit_variable(&mut self, token: &Token) -> Result<Object> {
-        self.environment.get(token)
+        self.environment.get(&token.lexeme.clone().unwrap())
+        // self.look_up_variable(token.clone())
     }
 }
 

@@ -24,7 +24,7 @@ pub trait StatementVisitor {
     fn visit_return(&mut self, t: &Token, e: Option<&Expr>) -> Result<Return>;
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Expr {
     Assign {
         name: Token,

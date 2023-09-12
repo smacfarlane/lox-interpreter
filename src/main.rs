@@ -13,6 +13,7 @@ mod environment;
 mod error;
 mod interpreter;
 mod parser;
+// mod resolver;
 mod scanner;
 mod token;
 
@@ -57,11 +58,6 @@ fn run_file(filename: String) -> Result<()> {
     let mut interpreter = Interpreter::new();
     let file = std::fs::File::open(filename)?;
 
-    //   for line in std::io::BufReader::new(file).lines() {
-    //      dbg!(run(&mut interpreter, &line.unwrap()))?;
-    // }
-    //
-    //
     let program = std::io::read_to_string(file).unwrap();
     run(&mut interpreter, &program)?;
 

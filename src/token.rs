@@ -1,14 +1,15 @@
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 use crate::error::ParseError;
 
 use strum_macros::EnumDiscriminants;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Token {
     pub token_type: TokenType,
     pub lexeme: Option<String>,
-    line: usize,
+    pub line: usize,
 }
 
 impl Token {
@@ -23,7 +24,7 @@ impl Token {
 
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.token_type,)
+        write!(f, "{}", self.token_type)
     }
 }
 
@@ -76,6 +77,13 @@ pub enum TokenType {
     While,
 
     Eof,
+}
+
+impl Eq for TokenType {}
+impl Hash for TokenType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        format!("{}", self).hash(state);
+    }
 }
 
 impl std::fmt::Display for TokenType {

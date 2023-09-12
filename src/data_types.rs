@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use crate::ast::Stmt;
@@ -25,6 +26,16 @@ impl PartialEq for Object {
             (Self::String(ref l), Self::String(ref r)) => l == r,
             (Self::Number(ref l), Self::Number(ref r)) => l == r,
             (_, _) => false,
+        }
+    }
+}
+
+impl Eq for Object {}
+impl Hash for Object {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Object::Number(n) => format!("{}", n).hash(state),
+            _ => self.hash(state),
         }
     }
 }
@@ -57,7 +68,7 @@ impl Return {
 
 pub trait Callable: std::fmt::Debug {
     fn arity(&self) -> u8; // Max 255 arguments
-    fn call(&self, i: &Interpreter, arguments: &Vec<Object>) -> Result<Return>;
+    fn call(&self, i: &mut Interpreter, arguments: &Vec<Object>) -> Result<Return>;
 }
 
 #[derive(Debug, PartialEq)]
@@ -88,7 +99,7 @@ impl Callable for Function {
     fn arity(&self) -> u8 {
         self.params.len() as u8
     }
-    fn call(&self, interpreter: &Interpreter, arguments: &Vec<Object>) -> Result<Return> {
+    fn call(&self, interpreter: &mut Interpreter, arguments: &Vec<Object>) -> Result<Return> {
         let mut environment = Environment::contains(&self.closure);
 
         for (param, arg) in self.params.iter().zip(arguments.iter()) {
@@ -109,7 +120,7 @@ impl Callable for Clock {
     fn arity(&self) -> u8 {
         0
     }
-    fn call(&self, _: &Interpreter, _: &Vec<Object>) -> Result<Return> {
+    fn call(&self, _: &mut Interpreter, _: &Vec<Object>) -> Result<Return> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
             .expect("SystemTime before 1970-01-01 00:00:00 UTC");
